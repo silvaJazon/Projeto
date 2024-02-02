@@ -1,18 +1,23 @@
 from django.db import models
 from enum import Enum
 
+#Versão
 
-class Responsavel(models.Model):
-    nome = models.CharField(max_length=50, unique=True, blank=True, null=True)
-    is_ativo = models.BooleanField( null=True, blank=True, verbose_name='Está ativo?')
-    data_ativacao = models.DateTimeField(auto_now_add=False, blank=True, null=True, verbose_name='Data de ativação do '
-                                                                                                 'usuário')
-    data_encerramento = models.DateTimeField(auto_now_add=False, blank=True, null=True,
-                                                 verbose_name='Data de encerramento do '
-                                                              'usuário')
+
+
+class UnidadeArm(models.Model):
+    nome = models.CharField(max_length=50, unique=True, null=True)
+    responsavel = models.CharField(max_length=50, unique=True, null=True)
+    is_ativo = models.BooleanField(null=True, verbose_name='Está ativa?')
+    data_ativacao = models.DateTimeField(auto_now_add=False, null=True, verbose_name='Data de ativação da Unidade de Armazenamento')
+    data_encerramento = models.DateTimeField(auto_now_add=False, null=True, blank=True, verbose_name='Data de encerramneto da Unidade de Armazenamento')
+
+    class Meta:
+        verbose_name = 'Unidade de Armazenamento'
+        verbose_name_plural = 'Unidades de Armazenamento'
 
     def __str__(self):
-        return self.nome
+        return f'{self.nome}'
 
 
 class CategoriaEnum(Enum):
@@ -70,7 +75,7 @@ class EntradaMaterial(models.Model):
     quantidade = models.PositiveIntegerField()
     data_entrada = models.DateTimeField(auto_now_add=True)
     remetente = models.CharField(max_length=100, null=True)
-    responsavel = models.ForeignKey(Responsavel, on_delete=models.CASCADE, blank=True, null=True)
+    destino = models.ForeignKey(UnidadeArm, on_delete=models.CASCADE, blank=True, null=True)
 
     class Meta:
         verbose_name = 'Registro de entrada de Material'
@@ -93,13 +98,13 @@ class TipoServicoEnum(Enum):
 class SaidaMaterial(models.Model):
     pacote = models.ForeignKey(Pacote, on_delete=models.CASCADE)
     data_saida = models.DateTimeField(auto_now_add=True)
+    unidade_debito = models.ForeignKey(UnidadeArm, on_delete=models.CASCADE, null=True)
     destino = models.CharField(max_length=100, null=True)
     servico = models.CharField(max_length=100, choices=TipoServicoEnum.choices())
-    responsavel = models.ForeignKey(Responsavel, on_delete=models.CASCADE, blank=True, null=True)
 
     class Meta:
         verbose_name = 'Registro de saída de Material'
         verbose_name_plural = 'Registros de saídas de Materiais'
 
     def __str__(self):
-        return f"Saida de Material do Pacote: {self.pacote} - Com destino para: {self.destino}"
+        return f"Saida de Material do Pacote: {self.pacote} Com destino para: {self.destino} - Debitado da unidade: {self.unidade_debito}"

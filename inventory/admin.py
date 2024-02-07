@@ -1,71 +1,39 @@
 from django.contrib import admin
 from django import forms
-from openpyxl import Workbook
-from openpyxl.utils import get_column_letter
-from openpyxl.styles import Font, Alignment
-from openpyxl.styles import Border, Side
+import pandas as pd
+from datetime import datetime
 from django.http import HttpResponse
-from django.utils import timezone
-from django.db.models import Sum
-from .models import Materiais, Pacote, ItensPacote, SaidaMaterial, EntradaMaterial, UnidadeArm
+from .models import Material, Pacote, ItensPacote, SaidaMaterial, EntradaMaterial, UnidadeArm, \
+    QuantidadeMaterialPorUnidade
 
-#Versão
 
+class QuantidadeMaterialPorUnidadeAdmin(admin.ModelAdmin):
+    list_display = ['unidade', 'material', 'quantidade_em_estoque']
+    list_filter = ['unidade', 'material']
+    ordering = ['material']
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+class QtnUndInLine(admin.TabularInline):
+    model = QuantidadeMaterialPorUnidade
+    extra = 0
+    readonly_fields = ['unidade', 'material', 'quantidade_em_estoque']
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 class UnidadeArmAdmin(admin.ModelAdmin):
     list_display = ['nome', 'responsavel', 'is_ativo', 'data_ativacao', 'data_encerramento']
-    actions = ['export_to_excel']
-
-    def export_to_excel(self, request, queryset):
-        # Criar um livro de trabalho e adicionar uma planilha
-        wb = Workbook()
-        ws = wb.active
-
-        # Configurar estilos
-        thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'),
-                             bottom=Side(style='thin'))
-        centered_alignment = Alignment(horizontal='center', vertical='center')
-
-        headers = ['Material', 'Quantidade', 'Categoria']
-        for col_num, header_title in enumerate(headers, 1):
-            col_letter = get_column_letter(col_num)
-            ws.column_dimensions[col_letter].width = 40
-            ws[f"{col_letter}1"] = header_title
-            ws[f"{col_letter}1"].font = Font(bold=True)
-            ws[f"{col_letter}1"].alignment = centered_alignment
-
-        row_num = 2
-        # Filtrar entradas de materiais por destino (unidade de armazenamento)
-        materiais_quantidades = EntradaMaterial.objects.filter(destino__in=queryset).values('material__nome',
-                                                                                            'material__categoria').annotate(
-            quantidade_total=Sum('quantidade'))
-
-        for item in materiais_quantidades:
-            ws.cell(row=row_num, column=1).value = item['material__nome']
-            ws.cell(row=row_num, column=2).value = item['quantidade_total']
-            ws.cell(row=row_num, column=3).value = item['material__categoria']
-
-            # Aplicar estilos
-            for col_num in range(1, 4):
-                col_letter = get_column_letter(col_num)
-                ws[f"{col_letter}{row_num}"].border = thin_border
-                ws[f"{col_letter}{row_num}"].alignment = centered_alignment
-
-            row_num += 1
-
-        # Configurar o nome do arquivo
-        current_date = timezone.now().strftime("%Y-%m-%d")
-        file_name = f"Materiais_{current_date}.xlsx"
-
-        # Configurar a resposta para download
-        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        response['Content-Disposition'] = f'attachment; filename={file_name}'
-        wb.save(response)
-
-        return response
-
-    export_to_excel.short_description = 'Exportar Materiais e Quantidades'
+    # inlines = [QtnUndInLine]
 
 
 class ItensPacoteInline(admin.TabularInline):
@@ -77,7 +45,7 @@ class PacoteAdmin(admin.ModelAdmin):
 
 
 class MateriaisAdmin(admin.ModelAdmin):
-    list_display = ['nome', 'quantidade_em_estoque', 'categoria']
+    list_display = ['nome', 'categoria']
     ordering = ['nome']
     list_filter = ['categoria']
 
@@ -98,8 +66,16 @@ class EntradaMaterialAdmin(admin.ModelAdmin):
         quantidade_entrada = obj.quantidade
         unidade_destino = obj.destino
 
-        material.quantidade_em_estoque += quantidade_entrada
-        material.save()
+        if unidade_destino:
+            # Adicione a quantidade de entrada ao estoque do material para a unidade de destino
+            qnt_unidade, created = QuantidadeMaterialPorUnidade.objects.get_or_create(unidade=unidade_destino,
+                                                                                      material=material)
+
+            if not qnt_unidade.quantidade_em_estoque:
+                qnt_unidade.quantidade_em_estoque = 0
+
+            qnt_unidade.quantidade_em_estoque += quantidade_entrada
+            qnt_unidade.save()
 
         super().save_model(request, obj, form, change)
 
@@ -112,13 +88,21 @@ class SaidaMaterialAdminForm(forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
         pacote = cleaned_data.get('pacote')
+        unidade_debito = cleaned_data.get('unidade_debito')  # Corrigindo aqui
 
         for item in pacote.itenspacote_set.all():
             material = item.material
             quantidade_saida = item.quantidade
 
-            if material.quantidade_em_estoque < quantidade_saida:
-                msg = f"Quantidade insuficiente em estoque para {material.nome}."
+            try:
+                qnt_unidade = QuantidadeMaterialPorUnidade.objects.get(unidade=unidade_debito, material=material)
+            except QuantidadeMaterialPorUnidade.DoesNotExist:
+                msg = f"Material {material.nome} não existe na unidade de débito {unidade_debito.nome}."
+                self.add_error(None, msg)
+                break
+
+            if qnt_unidade and qnt_unidade.quantidade_em_estoque < quantidade_saida:
+                msg = f"Quantidade insuficiente em estoque para {material.nome} na unidade de débito."
                 self.add_error(None, msg)
 
 
@@ -135,14 +119,26 @@ class SaidaMaterialAdmin(admin.ModelAdmin):
             material = item.material
             quantidade_saida = item.quantidade
 
-            if material.quantidade_em_estoque >= quantidade_saida:
-                material.quantidade_em_estoque -= quantidade_saida
-                material.save()
+            try:
+                qnt_unidade = QuantidadeMaterialPorUnidade.objects.get(unidade=unidade_debito, material=material)
+            except QuantidadeMaterialPorUnidade.DoesNotExist:
+                # Lidar com a exceção aqui, por exemplo, criando um novo objeto ou exibindo uma mensagem de erro.
+                msg = f"Material {material.nome} não existe na unidade de débito {unidade_debito.nome}."
+                form.add_error(None, msg)
+                transacao_bem_sucedida = False
+                break
 
-                material.unidade_debito = unidade_debito
-                material.save()
+            if qnt_unidade and qnt_unidade.quantidade_em_estoque >= quantidade_saida:
+                qnt_unidade.quantidade_em_estoque -= quantidade_saida
+                qnt_unidade.save()
+            elif qnt_unidade:
+                msg = f"Quantidade insuficiente em estoque para {material.nome} na unidade de débito."
+                form.add_error(None, msg)
+                transacao_bem_sucedida = False
+                break
             else:
-                msg = f"Quantidade insuficiente em estoque para {material.nome}."
+                # Lidar com o caso onde qnt_unidade é None (exceção ocorreu)
+                msg = f"Erro ao obter quantidade para {material.nome} na unidade de débito {unidade_debito.nome}."
                 form.add_error(None, msg)
                 transacao_bem_sucedida = False
                 break
@@ -153,7 +149,8 @@ class SaidaMaterialAdmin(admin.ModelAdmin):
             form.add_error(None, "A transação de saída não foi concluída com sucesso.")
 
 
-admin.site.register(Materiais, MateriaisAdmin)
+admin.site.register(QuantidadeMaterialPorUnidade, QuantidadeMaterialPorUnidadeAdmin)
+admin.site.register(Material, MateriaisAdmin)
 admin.site.register(Pacote, PacoteAdmin)
 admin.site.register(EntradaMaterial, EntradaMaterialAdmin)
 admin.site.register(SaidaMaterial, SaidaMaterialAdmin)

@@ -1,16 +1,15 @@
 from django.db import models
 from enum import Enum
 
-#Versão
-
-
 
 class UnidadeArm(models.Model):
     nome = models.CharField(max_length=50, unique=True, null=True)
     responsavel = models.CharField(max_length=50, unique=True, null=True)
     is_ativo = models.BooleanField(null=True, verbose_name='Está ativa?')
-    data_ativacao = models.DateTimeField(auto_now_add=False, null=True, verbose_name='Data de ativação da Unidade de Armazenamento')
-    data_encerramento = models.DateTimeField(auto_now_add=False, null=True, blank=True, verbose_name='Data de encerramneto da Unidade de Armazenamento')
+    data_ativacao = models.DateTimeField(auto_now_add=False, null=True,
+                                         verbose_name='Data de ativação da Unidade de Armazenamento')
+    data_encerramento = models.DateTimeField(auto_now_add=False, null=True, blank=True,
+                                             verbose_name='Data de encerramneto da Unidade de Armazenamento')
 
     class Meta:
         verbose_name = 'Unidade de Armazenamento'
@@ -35,9 +34,9 @@ class CategoriaEnum(Enum):
     OUTROS = 'Outros'
 
 
-class Materiais(models.Model):
+class Material(models.Model):
     nome = models.CharField(max_length=100, unique=True)
-    quantidade_em_estoque = models.PositiveIntegerField()
+    # quantidade_em_estoque = models.PositiveIntegerField()
     categoria = models.CharField(
         max_length=50,
         choices=[(cat.name, cat.value) for cat in CategoriaEnum],
@@ -46,16 +45,29 @@ class Materiais(models.Model):
     )
 
     class Meta:
-        verbose_name = 'Material em estoque'
-        verbose_name_plural = 'Materiais em estoque'
+        verbose_name = 'Material'
+        verbose_name_plural = 'Materiais'
 
     def __str__(self):
         return self.nome
 
 
+class QuantidadeMaterialPorUnidade(models.Model):
+    unidade = models.ForeignKey(UnidadeArm, on_delete=models.PROTECT)
+    material = models.ForeignKey(Material, on_delete=models.PROTECT)
+    quantidade_em_estoque = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = 'Estoque por Unidade'
+        verbose_name_plural = 'Estoque por Unidades'
+
+    def __str__(self):
+        return f'{self.quantidade_em_estoque}'
+
+
 class Pacote(models.Model):
     nome = models.CharField(max_length=100)
-    materiais = models.ManyToManyField(Materiais, through='ItensPacote')
+    materiais = models.ManyToManyField(Material, through='ItensPacote')
 
     def __str__(self):
         return self.nome
@@ -63,7 +75,7 @@ class Pacote(models.Model):
 
 class ItensPacote(models.Model):
     pacote = models.ForeignKey(Pacote, on_delete=models.CASCADE, verbose_name="Pacote")
-    material = models.ForeignKey(Materiais, on_delete=models.CASCADE, verbose_name='Material')
+    material = models.ForeignKey(Material, on_delete=models.CASCADE, verbose_name='Material')
     quantidade = models.PositiveIntegerField()
 
     def __str__(self):
@@ -71,7 +83,7 @@ class ItensPacote(models.Model):
 
 
 class EntradaMaterial(models.Model):
-    material = models.ForeignKey(Materiais, on_delete=models.CASCADE)
+    material = models.ForeignKey(Material, on_delete=models.CASCADE)
     quantidade = models.PositiveIntegerField()
     data_entrada = models.DateTimeField(auto_now_add=True)
     remetente = models.CharField(max_length=100, null=True)
@@ -107,4 +119,4 @@ class SaidaMaterial(models.Model):
         verbose_name_plural = 'Registros de saídas de Materiais'
 
     def __str__(self):
-        return f"Saida de Material do Pacote: {self.pacote} Com destino para: {self.destino} - Debitado da unidade: {self.unidade_debito}"
+        return f"Saida de Material do Pacote: {self.pacote} Com destino para: {self.destino} - Debitado da unidade: {self.unidade_debito} "

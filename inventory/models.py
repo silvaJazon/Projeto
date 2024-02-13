@@ -1,5 +1,6 @@
 from django.db import models
 from enum import Enum
+from django.utils import timezone
 
 
 class UnidadeArm(models.Model):
@@ -9,7 +10,7 @@ class UnidadeArm(models.Model):
     data_ativacao = models.DateTimeField(auto_now_add=False, null=True,
                                          verbose_name='Data de ativação da Unidade de Armazenamento')
     data_encerramento = models.DateTimeField(auto_now_add=False, null=True, blank=True,
-                                             verbose_name='Data de encerramneto da Unidade de Armazenamento')
+                                             verbose_name='Data de encerramento da Unidade de Armazenamento')
 
     class Meta:
         verbose_name = 'Unidade de Armazenamento'
@@ -17,6 +18,11 @@ class UnidadeArm(models.Model):
 
     def __str__(self):
         return f'{self.nome}'
+
+    def save(self, *args, **kwargs):
+        if self.data_encerramento and timezone.now() > self.data_encerramento:
+            self.is_ativo = False
+        super().save(*args, **kwargs)
 
 
 class CategoriaEnum(Enum):
@@ -36,7 +42,6 @@ class CategoriaEnum(Enum):
 
 class Material(models.Model):
     nome = models.CharField(max_length=100, unique=True)
-    # quantidade_em_estoque = models.PositiveIntegerField()
     categoria = models.CharField(
         max_length=50,
         choices=[(cat.name, cat.value) for cat in CategoriaEnum],
@@ -87,6 +92,7 @@ class EntradaMaterial(models.Model):
     quantidade = models.PositiveIntegerField()
     data_entrada = models.DateTimeField(auto_now_add=True)
     remetente = models.CharField(max_length=100, null=True)
+    is_externo = models.BooleanField(null=True, verbose_name='O remetente e externo?')
     destino = models.ForeignKey(UnidadeArm, on_delete=models.CASCADE, blank=True, null=True)
 
     class Meta:
@@ -111,7 +117,7 @@ class SaidaMaterial(models.Model):
     pacote = models.ForeignKey(Pacote, on_delete=models.CASCADE)
     data_saida = models.DateTimeField(auto_now_add=True)
     unidade_debito = models.ForeignKey(UnidadeArm, on_delete=models.CASCADE, null=True)
-    destino = models.CharField(max_length=100, null=True)
+    destino = models.CharField(max_length=100, null=True)  # Mudar para Farm
     servico = models.CharField(max_length=100, choices=TipoServicoEnum.choices())
 
     class Meta:
@@ -119,4 +125,5 @@ class SaidaMaterial(models.Model):
         verbose_name_plural = 'Registros de saídas de Materiais'
 
     def __str__(self):
-        return f"Saida de Material do Pacote: {self.pacote} Com destino para: {self.destino} - Debitado da unidade: {self.unidade_debito} "
+        return f"Saida de Material do Pacote: {self.pacote} Com destino para: {self.destino} - " \
+               f"Debitado da unidade: {self.unidade_debito} "

@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django import forms
 from .models import Material, Pacote, ItensPacote, SaidaMaterial, EntradaMaterial, UnidadeArm, \
-    QuantidadeMaterialPorUnidade
+    QuantidadeMaterialPorUnidade, TransferenciaInterna
 
 
 @admin.register(QuantidadeMaterialPorUnidade)
@@ -32,7 +32,6 @@ class QtnUndInLine(admin.TabularInline):
 @admin.register(UnidadeArm)
 class UnidadeArmAdmin(admin.ModelAdmin):
     list_display = ['nome', 'responsavel', 'is_ativo', 'data_ativacao', 'data_encerramento']
-    # inlines = [QtnUndInLine]
 
 
 class ItensPacoteInline(admin.TabularInline):
@@ -154,3 +153,59 @@ class SaidaMaterialAdmin(admin.ModelAdmin):
             super().save_model(request, obj, form, change)
         else:
             form.add_error(None, "A transação de saída não foi concluída com sucesso.")
+
+
+class TransferenciaInternaAdminForm(forms.ModelForm):
+    class Meta:
+        model = TransferenciaInterna
+        fields = '__all__'
+
+    def clean(self):
+        cleaned_data = super().clean()
+        unidade_debito = cleaned_data.get('unidade_debito')
+        unidade_credito = cleaned_data.get('unidade_credito')
+
+        if unidade_debito == unidade_credito:
+            msg = "A unidade de débito e a unidade de crédito devem ser diferentes."
+            self.add_error('unidade_credito', msg)
+
+
+@admin.register(TransferenciaInterna)
+class TransferenciaInternaAdmin(admin.ModelAdmin):
+    list_display = ['pacote', 'data_saida', 'unidade_debito', 'unidade_credito', 'data_entrada', 'entregue']
+    form = TransferenciaInternaAdminForm
+
+    def save_model(self, request, obj, form, change):
+        unidade_debito = obj.unidade_debito
+        unidade_credito = obj.unidade_credito
+        transacao_bem_sucedida = True
+
+        for item in obj.pacote.itenspacote_set.all():
+            material = item.material
+            quantidade_transferida = item.quantidade
+
+            try:
+                qnt_unidade_debito = QuantidadeMaterialPorUnidade.objects.get(unidade=unidade_debito, material=material)
+                qnt_unidade_credito = QuantidadeMaterialPorUnidade.objects.get(unidade=unidade_credito,
+                                                                               material=material)
+            except QuantidadeMaterialPorUnidade.DoesNotExist:
+                msg = f"Material {material.nome} não existe em uma das unidades."
+                form.add_error(None, msg)
+                transacao_bem_sucedida = False
+                break
+            if obj.entregue:
+                if qnt_unidade_debito and qnt_unidade_debito.quantidade_em_estoque >= quantidade_transferida:
+                    qnt_unidade_debito.quantidade_em_estoque -= quantidade_transferida
+                    qnt_unidade_debito.save()
+
+                    qnt_unidade_credito.quantidade_em_estoque += quantidade_transferida
+                    qnt_unidade_credito.save()
+                else:
+                    msg = f"Quantidade insuficiente em estoque para {material.nome} na unidade de débito."
+                    form.add_error(None, msg)
+                    transacao_bem_sucedida = False
+                    break
+        if transacao_bem_sucedida:
+            super().save_model(request, obj, form, change)
+        else:
+            form.add_error(None, "A transação de transferência interna não foi concluída com sucesso.")

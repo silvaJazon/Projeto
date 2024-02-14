@@ -50,8 +50,8 @@ class Material(models.Model):
     )
 
     class Meta:
-        verbose_name = 'Material'
-        verbose_name_plural = 'Materiais'
+        verbose_name = 'Cadastro de Material'
+        verbose_name_plural = 'Cadastros de Materiais'
 
     def __str__(self):
         return self.nome
@@ -63,8 +63,8 @@ class QuantidadeMaterialPorUnidade(models.Model):
     quantidade_em_estoque = models.PositiveIntegerField(default=0)
 
     class Meta:
-        verbose_name = 'Estoque por Unidade'
-        verbose_name_plural = 'Estoque por Unidades'
+        verbose_name = 'Estoque'
+        verbose_name_plural = 'Estoque'
 
     def __str__(self):
         return f'{self.quantidade_em_estoque}'
@@ -92,12 +92,11 @@ class EntradaMaterial(models.Model):
     quantidade = models.PositiveIntegerField()
     data_entrada = models.DateTimeField(auto_now_add=True)
     remetente = models.CharField(max_length=100, null=True)
-    is_externo = models.BooleanField(null=True, verbose_name='O remetente e externo?')
     destino = models.ForeignKey(UnidadeArm, on_delete=models.CASCADE, blank=True, null=True)
 
     class Meta:
-        verbose_name = 'Registro de entrada de Material'
-        verbose_name_plural = 'Registros de entradas de Materiais'
+        verbose_name = 'Registro de Entrada de Material  (Externo)'
+        verbose_name_plural = 'Registros de Entradas de Materiais  (Externo)'
 
     def __str__(self):
         return f"Entrada de Material - {self.material}"
@@ -121,9 +120,33 @@ class SaidaMaterial(models.Model):
     servico = models.CharField(max_length=100, choices=TipoServicoEnum.choices())
 
     class Meta:
-        verbose_name = 'Registro de saída de Material'
-        verbose_name_plural = 'Registros de saídas de Materiais'
+        verbose_name = 'Registro de  Saída de Material (Externo)'
+        verbose_name_plural = 'Registro de  Saídas de Materiais (Externo)'
 
     def __str__(self):
         return f"Saida de Material do Pacote: {self.pacote} Com destino para: {self.destino} - " \
                f"Debitado da unidade: {self.unidade_debito} "
+
+
+class TransferenciaInterna(models.Model):
+    pacote = models.ForeignKey(Pacote, on_delete=models.CASCADE)
+    data_saida = models.DateTimeField(auto_now_add=True, verbose_name='Data de saida da unidade remetente')
+    unidade_debito = models.ForeignKey(UnidadeArm, on_delete=models.CASCADE, null=True,related_name="transferencia_debito")
+    unidade_credito = models.ForeignKey(UnidadeArm, on_delete=models.CASCADE, null=True,related_name="transferencia_credito")
+    data_entrada = models.DateTimeField(auto_now_add=False,blank=True, null=True, verbose_name='Data de entrada na unidade de destino')
+    entregue = models.BooleanField(null=True, verbose_name='Foi entregue a unidade de destino?')
+
+    class Meta:
+        verbose_name = 'Transferência interna de Material'
+        verbose_name_plural = 'Transferências internas de Materiais'
+
+    def __str__(self):
+        return f"Transferência interna do Pacote: {self.pacote} Com destino para: {self.unidade_credito} - " \
+               f"Debitado da unidade: {self.unidade_debito} "
+
+    def save(self, *args, **kwargs):
+        if self.data_entrada:
+            self.entregue = True
+        else:
+            self.entregue = False
+        super().save(*args, **kwargs)

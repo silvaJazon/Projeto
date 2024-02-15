@@ -51,7 +51,7 @@ class Material(models.Model):
 
     class Meta:
         verbose_name = 'Cadastro de Material'
-        verbose_name_plural = 'Cadastros de Materiais'
+        verbose_name_plural = 'Cadastro de Materiais'
 
     def __str__(self):
         return self.nome
@@ -95,8 +95,8 @@ class EntradaMaterial(models.Model):
     destino = models.ForeignKey(UnidadeArm, on_delete=models.CASCADE, blank=True, null=True)
 
     class Meta:
-        verbose_name = 'Registro de Entrada de Material  (Externo)'
-        verbose_name_plural = 'Registros de Entradas de Materiais  (Externo)'
+        verbose_name = 'Externo - Entrada de Material'
+        verbose_name_plural = 'Externo - Entradas de Materiais'
 
     def __str__(self):
         return f"Entrada de Material - {self.material}"
@@ -120,8 +120,8 @@ class SaidaMaterial(models.Model):
     servico = models.CharField(max_length=100, choices=TipoServicoEnum.choices())
 
     class Meta:
-        verbose_name = 'Registro de  Saída de Material (Externo)'
-        verbose_name_plural = 'Registro de  Saídas de Materiais (Externo)'
+        verbose_name = 'Externo - Saída de Material'
+        verbose_name_plural = 'Externo - Saídas de Materiais'
 
     def __str__(self):
         return f"Saida de Material do Pacote: {self.pacote} Com destino para: {self.destino} - " \

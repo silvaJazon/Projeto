@@ -90,6 +90,7 @@ class SaidaMaterialAdminForm(forms.ModelForm):
         cleaned_data = super().clean()
         pacote = cleaned_data.get('pacote')
         unidade_debito = cleaned_data.get('unidade_debito')
+        unidade_debito_ativa = cleaned_data.get('unidade_debito').is_ativo if unidade_debito else False
 
         for item in pacote.itenspacote_set.all():
             material = item.material
@@ -107,6 +108,10 @@ class SaidaMaterialAdminForm(forms.ModelForm):
                 # Verifica se a quantidade em estoque é suficiente para a saída
                 msg = f"Quantidade insuficiente em estoque para {material.nome} na unidade de débito."
                 self.add_error(None, msg)
+
+        if not unidade_debito_ativa:
+            msg = "A unidade de débito esta desativada!"
+            self.add_error('unidade_debito', msg)
 
 
 @admin.register(SaidaMaterial)
@@ -164,10 +169,22 @@ class TransferenciaInternaAdminForm(forms.ModelForm):
         cleaned_data = super().clean()
         unidade_debito = cleaned_data.get('unidade_debito')
         unidade_credito = cleaned_data.get('unidade_credito')
+        unidade_debito_ativa = cleaned_data.get('unidade_debito').is_ativo if unidade_debito else False
+        unidade_credito_ativa = cleaned_data.get('unidade_credito').is_ativo if unidade_credito else False
 
         if unidade_debito == unidade_credito:
             msg = "A unidade de débito e a unidade de crédito devem ser diferentes."
             self.add_error('unidade_credito', msg)
+
+        if not unidade_debito_ativa:
+            msg = "A unidade de débito está desativada!"
+            self.add_error('unidade_debito', msg)
+
+        if not unidade_credito_ativa:
+            msg = "A unidade de crédito está desativada!"
+            self.add_error('unidade_credito', msg)
+
+        return cleaned_data
 
 
 @admin.register(TransferenciaInterna)
@@ -193,18 +210,20 @@ class TransferenciaInternaAdmin(admin.ModelAdmin):
                 form.add_error(None, msg)
                 transacao_bem_sucedida = False
                 break
-            if obj.entregue:
-                if qnt_unidade_debito and qnt_unidade_debito.quantidade_em_estoque >= quantidade_transferida:
-                    qnt_unidade_debito.quantidade_em_estoque -= quantidade_transferida
-                    qnt_unidade_debito.save()
 
-                    qnt_unidade_credito.quantidade_em_estoque += quantidade_transferida
-                    qnt_unidade_credito.save()
-                else:
-                    msg = f"Quantidade insuficiente em estoque para {material.nome} na unidade de débito."
-                    form.add_error(None, msg)
-                    transacao_bem_sucedida = False
-                    break
+            if qnt_unidade_debito.quantidade_em_estoque < quantidade_transferida:
+                msg = f"Quantidade insuficiente em estoque para {material.nome} na unidade de débito."
+                form.add_error(None, msg)
+                transacao_bem_sucedida = False
+                break
+
+            if obj.entregue:
+                qnt_unidade_debito.quantidade_em_estoque -= quantidade_transferida
+                qnt_unidade_debito.save()
+
+                qnt_unidade_credito.quantidade_em_estoque += quantidade_transferida
+                qnt_unidade_credito.save()
+
         if transacao_bem_sucedida:
             super().save_model(request, obj, form, change)
         else:

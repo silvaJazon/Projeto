@@ -6,23 +6,11 @@ from .models import Material, Package, PackageItems, MaterialExit, MaterialEntry
 
 @admin.register(MaterialQuantityPerUnit)
 class MaterialQuantityPerUnitAdmin(admin.ModelAdmin):
-    list_display = ['unit', 'material', 'quantity_in_stock']
-    list_filter = ['unit', 'material']
+    list_display = ['unit', 'material', 'quantity_in_stock', 'stock_level']
+    list_filter = ['unit', 'material', 'stock_level']
     ordering = ['material']
 
     def has_add_permission(self, request):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-
-class QuantityUnitInline(admin.TabularInline):
-    model = MaterialQuantityPerUnit
-    extra = 0
-    readonly_fields = ['unit', 'material', 'quantity_in_stock']
-
-    def has_add_permission(self, request, obj=None):
         return False
 
     def has_delete_permission(self, request, obj=None):

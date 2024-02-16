@@ -57,17 +57,41 @@ class Material(models.Model):
         return self.name
 
 
+class StockLevel(Enum):
+    NORMAL = 'normal'
+    CRITICAL = 'critical'
+
+    @classmethod
+    def choices(cls):
+        return [(choice.value, choice.name) for choice in cls]
+
+
 class MaterialQuantityPerUnit(models.Model):
     unit = models.ForeignKey(StorageUnit, on_delete=models.PROTECT)
     material = models.ForeignKey(Material, on_delete=models.PROTECT)
     quantity_in_stock = models.PositiveIntegerField(default=0)
+    minimum = models.PositiveIntegerField(default=5)
+    stock_level = models.CharField(
+        max_length=20,
+        choices=StockLevel.choices()
+    )
+
+    def get_stock_level(self):
+        if self.quantity_in_stock <= self.minimum:
+            return StockLevel.CRITICAL
+        else:
+            return StockLevel.NORMAL
+
+    def save(self, *args, **kwargs):
+        self.stock_level = self.get_stock_level().value
+        super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = 'Stock'
         verbose_name_plural = 'Materials in Stock'
 
     def __str__(self):
-        return f'{self.quantity_in_stock}'
+        return f' Material {self.material} / Quantidade {self.quantity_in_stock}'
 
 
 class Package(models.Model):
@@ -116,7 +140,7 @@ class MaterialExit(models.Model):
     package = models.ForeignKey(Package, on_delete=models.CASCADE)
     exit_date = models.DateTimeField(auto_now_add=True)
     debit_unit = models.ForeignKey(StorageUnit, on_delete=models.CASCADE, null=True)
-    destination = models.CharField(max_length=100, null=True)  # Change to Farm
+    destination = models.CharField(max_length=100, null=True)  # mudar Para farm
     service = models.CharField(max_length=100, choices=ServiceTypeEnum.choices())
 
     class Meta:

@@ -1,7 +1,39 @@
 from django.contrib import admin
 from django import forms
+from django.http import HttpResponse
+from openpyxl import Workbook
+from datetime import datetime
 from .models import Material, Package, PackageItems, MaterialExit, MaterialEntry, StorageUnit, \
     MaterialQuantityPerUnit, InternalTransfer
+
+
+def export_stock(modeladmin, request, queryset):
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+    # Adicione a data ao nome do arquivo
+    current_date = datetime.now().strftime("%d-%m-%Y")
+    response['Content-Disposition'] = f'attachment; filename="stock_export_{current_date}.xlsx"'
+
+    workbook = Workbook()
+    worksheet = workbook.active
+
+    # Adicione cabeçalhos
+    worksheet.append(['Material', 'Category', 'Quantity in Stock', 'Storage Unit', 'Stock Level'])
+
+    for material_quantity in queryset:
+        # Adicione dados
+        worksheet.append([material_quantity.material.name,
+                          material_quantity.material.get_category_display(),
+                          material_quantity.quantity_in_stock,
+                          material_quantity.unit.name,
+                          material_quantity.get_stock_level_display()])
+
+    workbook.save(response)
+
+    return response
+
+
+export_stock.short_description = "Export selected materials to Excel"
 
 
 @admin.register(MaterialQuantityPerUnit)
@@ -9,6 +41,7 @@ class MaterialQuantityPerUnitAdmin(admin.ModelAdmin):
     list_display = ['unit', 'material', 'quantity_in_stock', 'stock_level']
     list_filter = ['unit', 'material', 'stock_level']
     ordering = ['material']
+    actions = [export_stock]
 
     def has_add_permission(self, request):
         return False

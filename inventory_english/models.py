@@ -60,6 +60,7 @@ class Material(models.Model):
 class StockLevel(Enum):
     NORMAL = 'normal'
     CRITICAL = 'critical'
+    ZERO = 'zero'
 
     @classmethod
     def choices(cls):
@@ -77,7 +78,9 @@ class MaterialQuantityPerUnit(models.Model):
     )
 
     def get_stock_level(self):
-        if self.quantity_in_stock <= self.minimum:
+        if self.quantity_in_stock == 0:
+            return StockLevel.ZERO
+        elif self.quantity_in_stock <= self.minimum:
             return StockLevel.CRITICAL
         else:
             return StockLevel.NORMAL
